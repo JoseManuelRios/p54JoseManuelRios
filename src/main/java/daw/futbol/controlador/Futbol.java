@@ -5,6 +5,8 @@
  */
 package daw.futbol.controlador;
 
+import daw.futbol.modelo.Email;
+import daw.futbol.modelo.EmailDAO;
 import java.io.IOException;
 import java.util.ArrayList;
 import javax.servlet.ServletException;
@@ -38,63 +40,81 @@ public class Futbol extends HttpServlet {
         // ServletContext permite acceder a la información asociada 
         // a la aplicación
         ServletContext contexto = request.getServletContext();
-        
+
         // Obtengo la sesion de la petición HTTP, si existe. 
         // Con true, si no está creada se crea
         HttpSession sesion = request.getSession(true);
 
         // Guardo el nombre del visitante en un String
         String nombreVistante = request.getParameter("txtNombre");
+
+        //Guardo el email del visitante en un String
+        String emailVisitante = request.getParameter("txtMail");
+
         // Asigno ese nombre del visitante al atributo de la sesión y así lo puedo usar en la vista
         sesion.setAttribute("nombreVistante", nombreVistante);
+
+        // Asigno ese email del visitante al atributo de la sesión y así lo puedo usar en la vista
+        sesion.setAttribute("emailVisitante", emailVisitante);
 
         // Obtengo al jugador votado
         String jugadorVotado = request.getParameter("r1");
         if (jugadorVotado != null) {
-            // Si el visitante ha elegido "otros", hay que obtener el valor de la caja de texto
-            if (jugadorVotado.equals("Otros")) {
-                jugadorVotado = request.getParameter("txtOtros");
+
+            //Recibo todos los emails de la base de datos
+            ArrayList<Email> listaEmail = EmailDAO.consultarEmails(true);
+
+            //Si el email no se encuentra en la base de datos, realizo la votación
+            if (!buscarEmail(listaEmail, emailVisitante)) {
+                EmailDAO.insertarEmail(emailVisitante);
+                
+                // Si el visitante ha elegido "otros", hay que obtener el valor de la caja de texto
+                if (jugadorVotado.equals("Otros")) {
+                    jugadorVotado = request.getParameter("txtOtros");
+                }
+
+                // Asigno ese nombre del jugador al atributo de la sesión y así lo puedo usar en la vista
+                sesion.setAttribute("jugador", jugadorVotado);
+
+                // Obtengo la lista de jugadores que hay en la base de datos
+                // ordenada por nombre
+                ArrayList<Jugador> lista = JugadorDAO.consultarJugadores(false);
+
+                // En este punto miramos si el jugador existe en la lista o no
+                // Si existe, habría que sumarle uno a los votos - UPDATE
+                // Si no existe, hay que insertarlo poniendo a 1 sus votos - INSERT
+                if (buscarJugador(lista, jugadorVotado)) {
+                    // Actualizar votos
+                    JugadorDAO.actualizarJugador(jugadorVotado);
+                } else {
+                    // Como no existe el jugador en la base de datos, hay que insertarlo con sus votos a 1
+                    JugadorDAO.insertarJugador(jugadorVotado);
+                }
+
+                // Obtengo la lista actualizada de jugadores, ordenada por votos
+                lista = JugadorDAO.consultarJugadores(true);
+
+                // Expresión lambda para imprimir los elementos de la lista por consola
+                lista.forEach(System.out::println);
+
+                // Queremos que nuestro servlet invoque a un recurso de nuestra aplicación
+                // llamado TablaVotos.jsp (una vista). Usamos RequestDipatcher para
+                // encapsular el recurso al que vamos a ser redirigidos
+                RequestDispatcher despachador = contexto.getRequestDispatcher("/TablaVotos.jsp");
+                // El método fordward permite hacer la redirección a otro servlet o a una
+                // vista y se pasa tanto el objeto petición como el objeto respuesta
+                // para que el nuevo recurso pueda hacer uso de ellos
+                despachador.forward(request, response);
+
+            }else{
+                RequestDispatcher despachador = contexto.getRequestDispatcher("/Error.jsp");
+            despachador.forward(request, response);
             }
+        } else {
 
-            // Asigno ese nombre del jugador al atributo de la sesión y así lo puedo usar en la vista
-            sesion.setAttribute("jugador", jugadorVotado);
-
-            // Obtengo la lista de jugadores que hay en la base de datos
-            // ordenada por nombre
-            ArrayList<Jugador> lista = JugadorDAO.consultarJugadores(false);
-
-            // En este punto miramos si el jugador existe en la lista o no
-            // Si existe, habría que sumarle uno a los votos - UPDATE
-            // Si no existe, hay que insertarlo poniendo a 1 sus votos - INSERT
-            if (buscarJugador(lista, jugadorVotado)) {
-                // Actualizar votos
-                JugadorDAO.actualizarJugador(jugadorVotado);
-            } else {
-                // Como no existe el jugador en la base de datos, hay que insertarlo con sus votos a 1
-                JugadorDAO.insertarJugador(jugadorVotado);
-            }
-
-            // Obtengo la lista actualizada de jugadores, ordenada por votos
-            lista = JugadorDAO.consultarJugadores(true);
-
-            // Expresión lambda para imprimir los elementos de la lista por consola
-            lista.forEach(System.out::println);
-
-            // Queremos que nuestro servlet invoque a un recurso de nuestra aplicación
-            // llamado TablaVotos.jsp (una vista). Usamos RequestDipatcher para
-            // encapsular el recurso al que vamos a ser redirigidos
-            RequestDispatcher despachador = contexto.getRequestDispatcher("/TablaVotos.jsp");
-            // El método fordward permite hacer la redirección a otro servlet o a una
-            // vista y se pasa tanto el objeto petición como el objeto respuesta
-            // para que el nuevo recurso pueda hacer uso de ellos
+            RequestDispatcher despachador = contexto.getRequestDispatcher("/index.jsp");
             despachador.forward(request, response);
 
-        }
-        else{
-           
-            RequestDispatcher despachador = contexto.getRequestDispatcher("/index.html");
-            despachador.forward(request, response);
-            
         }
     }
 
@@ -113,6 +133,11 @@ public class Futbol extends HttpServlet {
     private static boolean buscarJugador(ArrayList<Jugador> lista, String nombre) {
         // Ejemplo de uso de expresiones lambda y API Stream
         return lista.stream().anyMatch((jugador) -> (jugador.getNombre().equals(nombre)));
+    }
+
+    private static boolean buscarEmail(ArrayList<Email> lista, String nombre) {
+        // Ejemplo de uso de expresiones lambda y API Stream
+        return lista.stream().anyMatch((email) -> (email.getEmail().equals(nombre)));
     }
 
 }
